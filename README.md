@@ -70,7 +70,7 @@ python ek0msusb.py --interactive
 
 When you start the framework, you'll see the main menu:
 
-<img width="1278" height="671" alt="Screenshot 2025-10-05 103630" src="https://github.com/user-attachments/assets/a8fd8f48-fd42-46fe-8165-24bc2f874e58" />
+<img width="1143" height="593" alt="Screenshot 2025-10-05 154536" src="https://github.com/user-attachments/assets/f7657463-1849-4008-b4e8-b6f2acdac4b4" />
 
 ## C2 Server Operation
 
