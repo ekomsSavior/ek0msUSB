@@ -131,6 +131,8 @@ The admin panel provides:
 5. Enter persistence name (default: WindowsUpdate)
 6. Enter output filename (default: payload.txt)
 
+<img width="885" height="583" alt="Screenshot 2025-10-05 154746" src="https://github.com/user-attachments/assets/d023274c-aec9-416a-9f53-f2e760846e0f" />
+
 ### What Happens During Payload Generation
 
 1. **Beacon Generation**: The framework generates a Python beacon tailored to your selected type
