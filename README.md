@@ -11,7 +11,7 @@ This framework is designed for authorized security testing, educational purposes
 ## Prerequisites
 
 - Windows 11 
-- Python 3.8 or 3.9 
+- Python 3.8 or 3.9 or 3.14 (i've built in fallback methods for all)
 - Internet connection (for ngrok functionality)
 
 ## Installation
@@ -276,3 +276,5 @@ The web interface automatically refreshes every 30 seconds to show:
 
 If you encounter issues, check the console output for detailed error messages. 
 The framework provides comprehensive logging during all operations.
+
+![Screenshot_2025-07-29_23_18_32](https://github.com/user-attachments/assets/dc63390d-fbca-4f05-aa76-7f867b509d98)
