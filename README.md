@@ -6,7 +6,7 @@ ek0msUSB is an advanced BadUSB framework that provides complete command and cont
 
 ## Disclaimer
 
-This framework is designed for authorized security testing, educational purposes, and legitimate red team operations only. Users are solely responsible for ensuring they have proper authorization before deploying any payloads. The developers assume no liability for misuse of this software. By using this framework, you acknowledge that you understand and accept full responsibility for your actions.
+This framework is designed for authorized security testing, educational purposes, and legitimate red team operations only. Users are solely responsible for ensuring they have proper authorization before deploying any payloads. The developer assumes no liability for misuse of this software. By using this framework, you acknowledge that you understand and accept full responsibility for your actions.
 
 ## Prerequisites
 
