@@ -1,5 +1,3 @@
-# ek0msUSB
-
 ![usbbanner](https://github.com/user-attachments/assets/70412339-61ac-46ca-8578-2c7c161152b4)
 
 ## Overview
