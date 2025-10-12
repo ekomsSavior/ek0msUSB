@@ -426,3 +426,4 @@ if __name__ == "__main__":
             print(f"[+] C2 URL: {args.c2_url}")
         except Exception as e:
             print(f"[-] Error: {e}")
+
