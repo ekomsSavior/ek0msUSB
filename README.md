@@ -278,3 +278,5 @@ If you encounter issues, check the console output for detailed error messages.
 The framework provides comprehensive logging during all operations.
 
 ![Screenshot_2025-07-29_23_18_32](https://github.com/user-attachments/assets/dc63390d-fbca-4f05-aa76-7f867b509d98)
+
+**❤ FOR AUTHORIZED TESTING ONLY ❤**
